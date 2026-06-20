@@ -1,0 +1,11 @@
+.build/
+build/
+.swiftpm/
+.DS_Store
+Package.resolved
+*.xcodeproj/
+xcuserdata/
+
+# Pokémon sprites are fetched locally at build time (scripts/build_sprites.py).
+# They are © Nintendo / Game Freak / The Pokémon Company and are NEVER committed.
+Resources/*.json
