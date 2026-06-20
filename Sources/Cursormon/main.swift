@@ -1,5 +1,6 @@
 import AppKit
 import QuartzCore
+import ImageIO
 
 // MARK: - Catalog
 
@@ -26,10 +27,9 @@ let CHASE: CGFloat = 0.14
 let ANIM_MOVING = 0.5
 let ANIM_IDLE = 0.12
 
-// MARK: - Sprite loading (decode once, cache per dex)
-//
-// Each <dex>.json is a Gen5 BW animated sprite decoded to {w, h, frames:[[row...]]},
-// every pixel a packed 0xRRGGBB Int, negative meaning transparent.
+// MARK: - Sprite loading — fetch Gen5 BW animated GIF from PokeAPI at runtime,
+// decode with ImageIO, cache the raw .gif under Application Support. Sprites are
+// NEVER bundled (© Nintendo); the app downloads them on first use.
 
 struct SpriteFrame {
     let cgImage: CGImage
@@ -40,53 +40,73 @@ struct SpriteFrame {
 @MainActor
 enum SpriteLoader {
     private static var cache: [Int: [SpriteFrame]] = [:]
+    private static let base = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated"
 
-    static func load(dex: Int) -> [SpriteFrame] {
+    static func load(dex: Int) async -> [SpriteFrame] {
         if let c = cache[dex] { return c }
-        let frames = decode(dex: dex)
-        cache[dex] = frames
+        let gif = supportDir().appendingPathComponent("\(dex).gif")
+        if !FileManager.default.fileExists(atPath: gif.path) {
+            guard let url = URL(string: "\(base)/\(dex).gif"),
+                  let (data, _) = try? await URLSession.shared.data(from: url) else { return [] }
+            try? data.write(to: gif)
+        }
+        let frames = decode(gif: gif)
+        if !frames.isEmpty { cache[dex] = frames }
         return frames
     }
 
-    private static func decode(dex: Int) -> [SpriteFrame] {
-        guard let url = Bundle.main.url(forResource: String(dex), withExtension: "json"),
-              let data = try? Data(contentsOf: url),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let w = obj["w"] as? Int, let h = obj["h"] as? Int
-        else { return [] }
-
-        let framesData: [[[Int]]]
-        if let frames = obj["frames"] as? [[[Int]]] {
-            framesData = frames
-        } else if let rows = obj["rows"] as? [[Int]] {
-            framesData = [rows]
-        } else {
-            framesData = []
-        }
-        return framesData.compactMap { rows in
-            makeImage(rows: rows, w: w, h: h).map { SpriteFrame(cgImage: $0, width: w, height: h) }
-        }
+    private static func supportDir() -> URL {
+        let dir = (FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+                   ?? FileManager.default.temporaryDirectory)
+            .appendingPathComponent("Cursormon", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
     }
 
-    private static func makeImage(rows: [[Int]], w: Int, h: Int) -> CGImage? {
-        var px = [UInt8](repeating: 0, count: w * h * 4)
-        for y in 0..<h {
-            let row = y < rows.count ? rows[y] : []
-            for x in 0..<w {
-                let v = x < row.count ? row[x] : -1
-                let i = (y * w + x) * 4
-                if v < 0 { continue }
-                px[i + 0] = UInt8((v >> 16) & 255)
-                px[i + 1] = UInt8((v >> 8) & 255)
-                px[i + 2] = UInt8(v & 255)
-                px[i + 3] = 255
-            }
+    /// Decode every GIF frame, then crop all to the shared (union) alpha bbox so
+    /// the sprite is tight and frames don't jitter. Native size, no rescaling.
+    private static func decode(gif: URL) -> [SpriteFrame] {
+        guard let src = CGImageSourceCreateWithURL(gif as CFURL, nil) else { return [] }
+        let n = CGImageSourceGetCount(src)
+        var imgs: [CGImage] = []
+        imgs.reserveCapacity(n)
+        for i in 0..<n {
+            if let im = CGImageSourceCreateImageAtIndex(src, i, nil) { imgs.append(im) }
         }
+        guard let first = imgs.first else { return [] }
+        let w = first.width, h = first.height
+
         let cs = CGColorSpaceCreateDeviceRGB()
         let bmp = CGImageAlphaInfo.premultipliedLast.rawValue
-        return px.withUnsafeMutableBytes { buf in
-            CGContext(data: buf.baseAddress, width: w, height: h, bitsPerComponent: 8,
-                      bytesPerRow: w * 4, space: cs, bitmapInfo: bmp)?.makeImage()
+        var minX = w, maxX = -1, minPxY = h, maxPxY = -1
+        for im in imgs {
+            var px = [UInt8](repeating: 0, count: w * h * 4)
+            let ok = px.withUnsafeMutableBytes { buf -> Bool in
+                guard let ctx = CGContext(data: buf.baseAddress, width: w, height: h,
+                                          bitsPerComponent: 8, bytesPerRow: w * 4,
+                                          space: cs, bitmapInfo: bmp) else { return false }
+                ctx.draw(im, in: CGRect(x: 0, y: 0, width: w, height: h))
+                return true
+            }
+            guard ok else { continue }
+            for y in 0..<h {
+                let rowOff = y * w * 4
+                for x in 0..<w where px[rowOff + x * 4 + 3] != 0 {
+                    if x < minX { minX = x }; if x > maxX { maxX = x }
+                    if y < minPxY { minPxY = y }; if y > maxPxY { maxPxY = y }
+                }
+            }
+        }
+        guard maxX >= minX, maxPxY >= minPxY else {
+            return imgs.map { SpriteFrame(cgImage: $0, width: w, height: h) }
+        }
+        // The bitmap context is bottom-up (row 0 = bottom); CGImage.cropping uses a
+        // top-left origin, so flip the Y span when building the crop rect.
+        let cw = maxX - minX + 1
+        let ch = maxPxY - minPxY + 1
+        let rect = CGRect(x: minX, y: h - 1 - maxPxY, width: cw, height: ch)
+        return imgs.compactMap { im in
+            im.cropping(to: rect).map { SpriteFrame(cgImage: $0, width: cw, height: ch) }
         }
     }
 }
@@ -118,11 +138,11 @@ final class Pet {
     private var scale: CGFloat
     var gap: CGFloat
 
-    init(dex: Int, scale: CGFloat, gap: CGFloat, start: CGPoint) {
+    init(dex: Int, frames: [SpriteFrame], scale: CGFloat, gap: CGFloat, start: CGPoint) {
         self.dex = dex
+        self.frames = frames
         self.scale = scale
         self.gap = gap
-        frames = SpriteLoader.load(dex: dex)
 
         panel = OverlayPanel(contentRect: CGRect(x: 0, y: 0, width: 100, height: 100),
                              styleMask: [.borderless, .nonactivatingPanel],
@@ -233,22 +253,23 @@ final class PetManager {
         }
     }
 
-    /// Reconcile live pets with the desired dex list (order preserved, existing reused).
-    func setDexList(_ list: [Int]) {
+    /// Reconcile live pets with the desired dex list. Sprites are fetched lazily
+    /// (downloaded on first use), so this is async; existing pets are reused.
+    func setDexList(_ list: [Int]) async {
         let cursor = NSEvent.mouseLocation
         var next: [Pet] = []
         for dex in list {
             if let existing = pets.first(where: { $0.dex == dex }) {
-                next.append(existing)
-            } else {
-                next.append(Pet(dex: dex, scale: scale, gap: gap,
-                                start: CGPoint(x: cursor.x - gap, y: cursor.y)))
+                next.append(existing); continue
             }
+            let frames = await SpriteLoader.load(dex: dex)
+            guard !frames.isEmpty else { continue }
+            next.append(Pet(dex: dex, frames: frames, scale: scale, gap: gap,
+                            start: CGPoint(x: cursor.x - gap, y: cursor.y)))
         }
         for p in pets where !list.contains(p.dex) { p.close() }
         pets = next
-        // Stack so the pet nearest the cursor (pet[0]) sits on top of the ones behind:
-        // raising last→first leaves pet[0] frontmost.
+        // Stack so the pet nearest the cursor (pet[0]) sits on top of the ones behind.
         for p in pets.reversed() { p.raise() }
     }
 
@@ -281,10 +302,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         gapIdx = (defaults.object(forKey: "gapIdx") as? Int).map { min(max($0, 0), GAPS.count - 1) } ?? 1
 
         manager = PetManager(scale: SCALES[scaleIdx].value, gap: GAPS[gapIdx].value)
-        manager.setDexList(orderedList())
         manager.start()
         buildStatusItem()
-        NSLog("Cursormon: started (pets=\(manager.pets.count))")
+        Task { await manager.setDexList(orderedList()) }   // fetches sprites on first run
+        NSLog("Cursormon: started")
     }
 
     /// The conga line in user-chosen order (front of list = nearest the cursor).
@@ -351,9 +372,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func toggleSpecies(_ sender: NSMenuItem) {
         if let i = selected.firstIndex(of: sender.tag) { selected.remove(at: i) }
         else { selected.append(sender.tag) }   // newly added joins the tail of the line
-        manager.setDexList(orderedList())
         defaults.set(orderedList(), forKey: "dexList")
         for it in speciesItems { it.state = selected.contains(it.tag) ? .on : .off }
+        Task { await manager.setDexList(orderedList()) }
     }
 
     @objc private func pickScale(_ sender: NSMenuItem) {
