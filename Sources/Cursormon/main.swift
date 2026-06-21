@@ -316,8 +316,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func buildStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.image = NSImage(systemSymbolName: "pawprint.fill", accessibilityDescription: "Cursormon")
-        statusItem.button?.image?.isTemplate = true
+        // 選單列圖示 = 全家共用的 zyx 品牌標(Resources/MenubarIcon.png,template),找不到才退回 SF Symbol。
+        if let p = Bundle.main.path(forResource: "MenubarIcon", ofType: "png"),
+           let mark = NSImage(contentsOfFile: p) {
+            let h: CGFloat = 18
+            mark.size = NSSize(width: h * mark.size.width / max(mark.size.height, 1), height: h)
+            mark.isTemplate = true
+            statusItem.button?.image = mark
+        } else {
+            statusItem.button?.image = NSImage(systemSymbolName: "pawprint.fill", accessibilityDescription: "Cursormon")
+            statusItem.button?.image?.isTemplate = true
+        }
 
         let menu = NSMenu()
 
