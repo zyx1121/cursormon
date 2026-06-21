@@ -3,13 +3,15 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleIdentifier</key>
-	<string>dev.zyx.cursormon</string>
+	<string>tw.zyx.cursormon</string>
 	<key>CFBundleName</key>
 	<string>Cursormon</string>
 	<key>CFBundleDisplayName</key>
 	<string>Cursormon</string>
 	<key>CFBundleExecutable</key>
 	<string>Cursormon</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleVersion</key>
@@ -27,6 +29,6 @@
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.entertainment</string>
 	<key>NSHumanReadableCopyright</key>
-	<string>© 2026 zyx1121</string>
+	<string>© 2026 YongXiang Zhan</string>
 </dict>
 </plist>
