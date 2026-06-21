@@ -1,6 +1,7 @@
 import AppKit
 import QuartzCore
 import ImageIO
+import ServiceManagement
 
 // MARK: - Catalog
 
@@ -342,7 +343,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         launchItem = NSMenuItem(title: "登入時啟動", action: #selector(toggleLaunch), keyEquivalent: "")
         launchItem.target = self
-        launchItem.state = isLaunchAtLogin() ? .on : .off
+        launchItem.state = (SMAppService.mainApp.status == .enabled) ? .on : .off
         menu.addItem(launchItem)
 
         menu.addItem(.separator())
@@ -391,43 +392,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for it in gapItems { it.state = (it.tag == gapIdx) ? .on : .off }
     }
 
+    // 開機自啟走 SMAppService（macOS 13+），不手寫 LaunchAgent —— app 搬家 / 改名也不會壞。
+    // 需要 app 安裝在 /Applications。
     @objc private func toggleLaunch() {
-        let on = !isLaunchAtLogin()
-        setLaunchAtLogin(on)
-        launchItem.state = on ? .on : .off
+        do {
+            if SMAppService.mainApp.status == .enabled {
+                try SMAppService.mainApp.unregister()
+            } else {
+                try SMAppService.mainApp.register()
+            }
+        } catch {
+            NSLog("[Cursormon] login item toggle failed: \(error)")
+        }
+        launchItem.state = (SMAppService.mainApp.status == .enabled) ? .on : .off
     }
 
     @objc private func quit() { NSApp.terminate(nil) }
-
-    // MARK: launch-at-login via a LaunchAgent plist (loads next login; RunAtLoad)
-
-    private func launchPlistURL() -> URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/LaunchAgents/dev.zyx.cursormon.plist")
-    }
-
-    private func isLaunchAtLogin() -> Bool {
-        FileManager.default.fileExists(atPath: launchPlistURL().path)
-    }
-
-    private func setLaunchAtLogin(_ on: Bool) {
-        let url = launchPlistURL()
-        if on {
-            let exe = Bundle.main.executablePath ?? ""
-            let plist: [String: Any] = [
-                "Label": "dev.zyx.cursormon",
-                "ProgramArguments": [exe],
-                "RunAtLoad": true,
-            ]
-            try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
-                                                     withIntermediateDirectories: true)
-            if let data = try? PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0) {
-                try? data.write(to: url)
-            }
-        } else {
-            try? FileManager.default.removeItem(at: url)
-        }
-    }
 }
 
 let app = NSApplication.shared
