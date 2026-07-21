@@ -6,10 +6,6 @@
 
 [![CI](https://github.com/zyx1121/cursormon/actions/workflows/ci.yml/badge.svg)](https://github.com/zyx1121/cursormon/actions) &nbsp;[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](#license)
 
-![Cursormon demo](cursormon.gif)
-
-<sub>A pixel Pokémon trails the cursor across the desktop; with more than one active they form a conga line, closest to the cursor drawn on top.</sub>
-
 Desktop pets usually mean a chunky always-on-top window or an app that quietly asks for Accessibility access. Cursormon skips both: pick a few favorites from the Pokédex from the menu bar, and they follow your cursor around the screen forever, built on nothing but a transparent click-through window and the cursor position the OS already hands out for free.
 
 | | |
