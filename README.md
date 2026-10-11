@@ -1,53 +1,81 @@
-# Cursormon
+<div align="center">
 
-> Your cursor picks up a conga line of tiny Pokémon and never has to ask permission for it.
+<h1>Cursormon</h1>
 
-`swift` · `macos` · `menu-bar-app` · `pokemon` · `desktop-pet`
+<p><strong>A conga line of tiny pixel Pokémon that follows your cursor on macOS.</strong></p>
 
-[![CI](https://github.com/zyx1121/cursormon/actions/workflows/ci.yml/badge.svg)](https://github.com/zyx1121/cursormon/actions) &nbsp;[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](#license)
+[![CI](https://img.shields.io/github/actions/workflow/status/zyx1121/cursormon/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/zyx1121/cursormon/actions)
+[![Release](https://img.shields.io/github/v/release/zyx1121/cursormon?style=flat-square&sort=semver)](https://github.com/zyx1121/cursormon/releases)
+[![macOS](https://img.shields.io/badge/macOS-14%2B-000000?style=flat-square&logo=apple)](Package.swift)
+[![License](https://img.shields.io/github/license/zyx1121/cursormon?style=flat-square)](LICENSE)
 
-Desktop pets usually mean a chunky always-on-top window or an app that quietly asks for Accessibility access. Cursormon skips both: pick a few favorites from the Pokédex from the menu bar, and they follow your cursor around the screen forever, built on nothing but a transparent click-through window and the cursor position the OS already hands out for free.
+**English** | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
-| | |
-|---|---|
-| Platform | macOS 14+ |
-| Language | Swift 6, AppKit + Core Animation |
-| Build | SwiftPM + a Makefile bundle, ad-hoc codesign, no Xcode |
-| Sprites | PokeAPI Gen5 BW animated sprites, fetched at runtime |
+</div>
 
-## Getting started
+Desktop pets often mean a large always-on-top window, or an app that asks for Accessibility access. Cursormon needs neither. Pick a few Pokémon from the menu bar, and they follow your cursor around the screen.
 
-```bash
-git clone https://github.com/zyx1121/cursormon.git && cd cursormon
-make run   # build, bundle, codesign, launch
+## Features
+
+- **Follows your cursor**: each pet eases toward the one in front of it, so several pets form a trailing line.
+- **Needs no permissions**: it reads only `NSEvent.mouseLocation` from a click-through panel, so macOS never asks for Accessibility access.
+- **Fetches sprites at runtime**: animated Gen 5 sprites from PokeAPI, cached on first use and never bundled.
+- **Moves naturally**: a walk cycle while moving, slow breathing while idle, and a flip to face the direction of travel.
+- **Starts at login**: a menu bar switch registers it with `SMAppService`.
+
+## Quick start
+
+Download `Cursormon-v0.1.0-macos.zip` from the [latest release](https://github.com/zyx1121/cursormon/releases/latest), or build it:
+
+```sh
+git clone https://github.com/zyx1121/cursormon && cd cursormon
+make run
 ```
 
-First launch downloads the sprites it needs from PokeAPI (needs network); after that they're cached locally, so it runs offline. A 🐾 icon appears in the menu bar: click it to pick creatures, size, follow distance, and toggle launch-at-login, or quit.
+A 🐾 icon appears in the menu bar. The first start downloads the sprites that it needs, so it needs the network once. After that, it runs offline.
 
-## What it gives you
+## Usage
 
-- **Follows** your cursor with one or more animated pixel Pokémon, each easing toward the one ahead of it, so several form a trailing conga line
-- **Costs zero permissions**: reads only `NSEvent.mouseLocation` from a click-through `NSPanel`, no Accessibility / TCC prompt
-- **Fetches sprites at runtime**: PokeAPI Gen5 BW animated GIFs, decoded and cropped on first use, cached under `~/Library/Application Support/Cursormon/`, never bundled
-- **Plays it straight**: walk-cycle while moving, breathes slowly while idle, flips to face its heading
-- **Runs at login**: menu bar toggle registers it via `SMAppService`, no hand-written LaunchAgent
+- Click 🐾 to pick creatures, the size and the follow distance, to turn start at login on or off, or to quit.
+- Run `make install` to copy the app to `/Applications`. Start at login needs the app there to survive a reboot.
+- To add a creature, add its National Dex number and name to `SPECIES` in `Sources/Cursormon/main.swift`, then run `make run`.
 
 ## How it works
 
-Each pet is its own transparent, click-through `NSPanel` floating over everything. `pet[0]` trails the cursor and `pet[i]` trails `pet[i-1]`, so several pets form a wake behind the pointer, with the one nearest the cursor stacked on top. Sprites come from PokeAPI at runtime (animated GIF decoded via ImageIO, cropped to a tight bounding box) and are cached as raw `.gif` files, so nothing Pokémon-related ships inside the app itself.
+Each pet is its own transparent, click-through `NSPanel` above every window. `pet[0]` follows the cursor and `pet[i]` follows `pet[i-1]`, with the pet nearest the cursor on top. ImageIO decodes each animated GIF from PokeAPI and crops it to a tight box. The app caches the raw `.gif` files in `~/Library/Application Support/Cursormon/`.
 
-`make install` copies the built app to `/Applications`, which `SMAppService` needs for the launch-at-login toggle to stick across reboots.
+## Limits
 
-## Adding creatures
+- macOS 14 or later.
+- The first view of each creature needs the network.
 
-Add the National Dex number and a name to `SPECIES` in `Sources/Cursormon/main.swift`, then `make run`. The sprite is fetched from PokeAPI the next time that creature is shown.
+## For AI agents
 
-## Contributing
+Facts for coding agents and LLM tools. The rules for changing the code are in [AGENTS.md](AGENTS.md).
 
-A personal project, but issues and PRs are welcome: ground rules in [CONTRIBUTING.md](https://github.com/zyx1121/.github/blob/main/CONTRIBUTING.md).
+- **Summary**: Swift 6 macOS menu bar app that shows animated pixel Pokémon following the cursor, with sprites from PokeAPI at runtime.
+- **Type**: app
+- **Interfaces**: menu bar UI only. No CLI, MCP or HTTP.
+- **Install**: download `Cursormon-v0.1.0-macos.zip` from https://github.com/zyx1121/cursormon/releases/latest
+- **Run**: `make run`
+- **Verify**: `make bundle` builds `Cursormon.app` without errors
+- **Config**: none, the menu bar holds the settings
+- **Secrets**: none
+- **Limits**: macOS 14 or later. The app needs the network once per creature.
+
+## Development
+
+```sh
+make bundle    # swift build, bundle and ad-hoc codesign, no Xcode project
+make run
+```
+
+CI runs `make bundle` on every push.
+
+## Disclaimer
+
+Pokémon names and sprites are trademarks of Nintendo, Game Freak and The Pokémon Company. Cursormon fetches them at runtime and never redistributes them. It is a non-commercial fan project with no affiliation to any of them.
 
 ## License
 
-[MIT](LICENSE) · code only, gotta trail 'em all
-
-Pokémon and all sprites/names are trademarks and © Nintendo / Game Freak / The Pokémon Company. Cursormon fetches them at runtime and never redistributes them: a non-commercial fan project, not affiliated with any of the above.
+[MIT](LICENSE), for the code only.
